@@ -1,6 +1,6 @@
 # EvRepSL: Event-Stream Representation via Self-Supervised Learning for Event-Based Vision
 
-This repository contains the official implementation of the paper **"EvRepSL: Event-Stream Representation via Self-Supervised Learning for Event-Based Vision"**. EvRepSL introduces a novel self-supervised approach for generating event-stream representations, which significantly improves the quality of event-based vision tasks.
+This repository contains the official implementation of the paper **"EvRepSL: Event-Stream Representation via Self-Supervised Learning for Event-Based Vision"** [IEEE TIP](https://ieeexplore.ieee.org/document/10758409), [arXiv](https://arxiv.org/abs/2412.07080). EvRepSL introduces a novel self-supervised approach for generating event-stream representations, which significantly improves the quality of event-based vision tasks.
 
 ## Overview
 
@@ -26,3 +26,18 @@ python3 event_representation
 ```
 
 ## To Be Updated
+
+
+### To Cite
+<pre>
+@article{qu2024evrepsl,
+  title={EvRepSL: Event-Stream Representation via Self-Supervised Learning for Event-Based Vision},
+  author={Qu, Qiang and Chen, Xiaoming and Chung, Yuk Ying and Shen, Yiran},
+  journal={IEEE Transactions on Image Processing},
+  year={2024},
+  publisher={IEEE}
+}
+</pre>
+
+
+
