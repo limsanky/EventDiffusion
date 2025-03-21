@@ -180,6 +180,65 @@ def events_to_ev_surface(event_xs, event_ys, event_timestamps, event_polarities,
     return ev_surface
 
 
+def events_to_tore(event_xs, event_ys, event_timestamps, event_polarities, resolution=(320, 240), K=5, tau=5e6, tau_min=150):
+    """
+    Compute the TORE volume from event data.
+
+    Args:
+        event_xs (array-like): x coordinates of events.
+        event_ys (array-like): y coordinates of events.
+        event_timestamps (array-like): Timestamps for each event.
+        event_polarities (array-like): Polarities for each event (assumed >0 for positive, <=0 for negative).
+        resolution (tuple): (width, height) of the sensor.
+        K (int): Number of recent events to store per pixel per polarity.
+        tau (float): Maximum time threshold (for clipping).
+        tau_min (float): Minimum time sensitivity threshold.
+        
+    Returns:
+        np.ndarray: TORE volume with shape (2, K, height, width)
+    """
+    # Unpack resolution. Here resolution is assumed as (width, height).
+    width, height = resolution
+
+    # Initialize FIFO for each pixel and polarity.
+    # We'll use shape (2, height, width, K): 2 for polarities, last dimension for the FIFO.
+    fifo = np.full((2, height, width, K), -np.inf)
+    
+    num_events = len(event_xs)
+    
+    # Process each event in order (assuming events are sorted by time)
+    for i in range(num_events):
+        x = int(event_xs[i])
+        y = int(event_ys[i])
+        t = event_timestamps[i]
+        pol = event_polarities[i]
+        # Use index 0 for positive events, 1 for negative events.
+        p_idx = 0 if pol > 0 else 1
+        
+        # Update the FIFO for pixel (y, x) and polarity p_idx.
+        # Shift existing values one position to the right (older events move right)
+        fifo[p_idx, y, x, 1:] = fifo[p_idx, y, x, :-1]
+        # Insert the new timestamp at the front.
+        fifo[p_idx, y, x, 0] = t
+
+    # Define current time as the maximum timestamp (or could be provided externally)
+    current_time = max(event_timestamps)
+    
+    # Compute time differences: dt = current_time - FIFO + 1.
+    # For any -inf values (i.e. pixels that never fired), the difference becomes infinity.
+    dt = current_time - fifo + 1
+    # Clamp dt from below by tau_min to avoid very small values (or -inf issues).
+    dt = np.maximum(dt, tau_min)
+    
+    # Compute the logarithm of the time differences.
+    log_dt = np.log(dt)
+    
+    # Clip the log values to lie between log(tau_min) and log(tau) as defined in the paper.
+    log_dt = np.clip(log_dt, np.log(tau_min), np.log(tau))
+    
+    # Rearrange dimensions to obtain a TORE volume of shape: (2, K, height, width)
+    volume = np.transpose(log_dt, (0, 3, 1, 2))
+    return volume
 
 
 
