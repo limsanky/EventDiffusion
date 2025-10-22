@@ -1,0 +1,108 @@
+import numpy as np
+from models import EffWNet
+import torch
+import argparse
+from mvsec_helper import *
+from torchsummary import summary
+from torch.utils.data import DataLoader
+import torchvision.transforms.v2 as transforms
+from mvsec_dataset import MVSECDataset, MVSECSampler, SingleMVSECSampler
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--workdir', default='/root/code/EventDiffusion/', type=str)
+    parser.add_argument('--date', type=str)
+    parser.add_argument('--data_dir', default='/root/data/MVSEC', type=str)
+    parser.add_argument('--split', default=1, type=int)
+    parser.add_argument('--scenario', default='indoor_flying', type=str)
+    parser.add_argument('--epochs', default=300, type=int)
+    parser.add_argument('--lr', default=1e-3, type=float)
+    args = parser.parse_args()
+    
+    device = 'cuda'
+    split = args.split
+    scenario = args.scenario
+    data_dir = args.data_dir
+    epochs = args.epochs
+    learning_rate = args.lr
+    workdir = args.workdir + f'experiments/{args.date}/mvsec/scenario_{scenario}/split_{split}'
+    if not os.path.exists(workdir):
+        os.makedirs(workdir)
+        
+    # Create Dataset and DataLoader
+    event_transforms = transforms.Compose([
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.ToDtype(torch.float32, scale=False),
+    ])
+    
+    image_transforms = transforms.Compose([
+        transforms.ToImage(),
+        transforms.ToDtype(torch.uint8, scale=True),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.ToDtype(torch.float32, scale=False),
+    ])
+    
+    dataset = MVSECDataset(data_dir=data_dir, scenario=scenario, split=split, 
+                           event_transforms=event_transforms, image_transforms=image_transforms)
+    _sampler = SingleMVSECSampler(scenario=scenario, split=split)
+    sampler = MVSECSampler(sampler=_sampler, batch_size=4, drop_last=False)
+    # dataloader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=2, pin_memory=True,
+    #                         batch_sampler=sampler)
+    dataloader = DataLoader(dataset, num_workers=1, pin_memory=True,
+                            batch_sampler=sampler)
+    
+    # Create model
+    model = EffWNet(n_channels=3, out_depth=1, inc_f0=1, bilinear=True, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False)
+    model.to(device)
+    model.train()
+
+    model_stats = summary(model, (1, 3, 260, 346), batch_dim=None, verbose=False, device=device)
+    with open(f'{workdir}/model_info.txt', mode='w') as f:
+        f.write(str(model_stats))
+    
+    optimizer = torch.optim.RAdam(model.parameters(), lr=learning_rate)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)
+
+    for epoch in range(epochs):
+        for (event_data, image_data) in dataloader:
+            event_data = event_data.to(device)
+            print('event', event_data.shape)
+            images_0, images_1 = {}, {}
+            for loc in image_data:
+                images_0[loc] = image_data[loc][0].to(device)
+                images_1[loc] = image_data[loc][1].to(device)
+                print(f'{loc} image_0', images_0[loc].shape)
+                print(f'{loc} image_1', images_1[loc].shape)
+            exit()
+            optimizer.zero_grad()
+            output = model(event_data)
+            loss = torch.nn.functional.mse_loss(output, event_data)
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
+
+        if epoch % 25 == 0:
+            print(f'Epoch {epoch}/{epochs}, Loss: {loss.item():.6f}')
+            torch.save(model.state_dict(), f'{workdir}/model_epoch_{epoch}.pth')
+            torch.save(optimizer.state_dict(), f'{workdir}/optimizer_epoch_{epoch}.pth')
+            torch.save(scheduler.state_dict(), f'{workdir}/scheduler_epoch_{epoch}.pth')
+    
+    # ev_rep_data = []
+    
+    # for loc in ['left', 'right']:
+    #     for exp in EXPERIMENTS[scenario]:
+    #         if exp == split:
+    #             continue
+
+    #         ev_rep_dir = Path(data_dir) / f'{scenario}/{scenario}{exp}/evrep_train/evrep_{loc}.npy'
+    #         assert ev_rep_dir.exists(), ev_rep_dir
+            
+    #         ev_rep = torch.from_numpy(np.load(ev_rep_dir)).float()
+    #         # print(ev_rep.min(), ev_rep.max())
+    #         ev_rep_data.append(ev_rep)
+    
+    # for _data in ev_rep_data:
+    #     print(_data.shape)
+    
+    
+    

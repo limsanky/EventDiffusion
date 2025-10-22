@@ -390,16 +390,20 @@ class EffNet(nn.Module):
 
 
 class EffWNet(nn.Module):
-    def __init__(self, n_channels, out_depth, inc_f0=1, bilinear=False, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False, device="cuda:1"):
+    def __init__(self, n_channels, out_depth, inc_f0=1, bilinear=False, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False, device="cuda:1", outer_conv=False):
         super(EffWNet, self).__init__()
         self.n_channels = n_channels
         self.out_depth = out_depth
         self.inc_f0 = inc_f0
         self.bilinear = bilinear
-
+        self.outer_conv = outer_conv
+        
         # ch1 = 24
         
-        n_chs = [ch1* (2 ** power) for power in range(n_lyr+1)]
+        # if outer_conv:
+        #     self.input_layer = 
+        
+        n_chs = [ch1 * (2 ** power) for power in range(n_lyr+1)]
         n_rep_dn = [2, 2, 4, 4, 6]
         lyr_ts = ["fused", "fused", "depthwise", "depthwise", "depthwise"]
         n_rep_up = [6, 4, 4, 2, 2]

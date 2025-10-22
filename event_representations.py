@@ -242,15 +242,16 @@ def events_to_tore(event_xs, event_ys, event_timestamps, event_polarities, resol
 
 
 
-def events_to_EvRep(event_xs, event_ys, event_timestamps, event_polarities, resolution=(320, 240)):
+def events_to_EvRep(event_xs, event_ys, event_timestamps, event_polarities, resolution=(320, 240), pol_between_0_and_1=True):
     """
     Convert event-based data into an EvRep representation using more efficient matrix operations.
 
     :param event_xs: Array of x-coordinates of events
     :param event_ys: Array of y-coordinates of events
     :param event_timestamps: Array of timestamps of events
-    :param event_polarities: Array of polarities of events (assumed to be from {0, 1})
+    :param event_polarities: Array of polarities of events
     :param resolution: Tuple (width, height) representing the resolution of the output grid
+    :param pol_between_0_and_1: Boolean indicating if polarities are in {0, 1} range
     :return: An EvRep representation of shape (3, height, width)
     """
     width, height = resolution
@@ -261,9 +262,13 @@ def events_to_EvRep(event_xs, event_ys, event_timestamps, event_polarities, reso
     E_T_sum = np.zeros((height, width), dtype=np.float32)  # For sum of timestamp deltas
     E_T_sq_sum = np.zeros((height, width), dtype=np.float32)  # For sum of squared deltas
 
-    # Normalize event polarities to {-1, 1}
-    event_polarities = np.where(event_polarities == 0, -1, event_polarities)
-
+    if pol_between_0_and_1:
+        assert np.all(np.isin(event_polarities, [0, 1])), "Event polarities must be either 0 or 1."
+        # Normalize event polarities to {-1, 1}
+        event_polarities = np.where(event_polarities == 0, -1, event_polarities)
+    else:
+        assert np.all(np.isin(event_polarities, [-1, 1])), "Event polarities must be either -1 or 1."
+        
     # Bin events into the grid (spatial and polarity channels)
     np.add.at(E_C, (event_ys, event_xs), 1)  # Count of events at each pixel
     np.add.at(E_I, (event_ys, event_xs), event_polarities)  # Net polarity of events at each pixel
@@ -331,7 +336,7 @@ if __name__ == "__main__":
     event_polarities = np.random.randint(0, 2, num_events)
 
     # EvRep representation
-    ev_rep = events_to_EvRep(event_xs, event_ys, event_timestamps, event_polarities, resolution)
+    ev_rep = events_to_EvRep(event_xs, event_ys, event_timestamps, event_polarities, resolution, pol_between_0_and_1=True)
 
     print("EvRep Representation was generated!")
 
@@ -339,8 +344,10 @@ if __name__ == "__main__":
     # EvRepSL representation
     # RepGen assume batchfied data B x 3 x H x W
 
+    print(ev_rep.shape)
     ev_rep = np.expand_dims(ev_rep, axis=0)
-
+    print(ev_rep.shape)
+    exit()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model = load_RepGen(device)
