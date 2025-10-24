@@ -31,7 +31,15 @@ if __name__ == "__main__":
     workdir = args.workdir + f'experiments/{args.date}/mvsec/scenario_{scenario}/split_{split}'
     if not os.path.exists(workdir):
         os.makedirs(workdir)
-        
+    
+    with open(f'{workdir}/log.txt', mode='w') as f:
+        f.write(f'Experiment workdir: {workdir}\n')
+        f.write(f'Scenario: {scenario}\n')
+        f.write(f'Training For Split: {split}\n')
+        f.write(f'Epochs: {epochs}\n')
+        f.write(f'Learning Rate: {learning_rate}\n')
+        f.write('--'*20 + '\n\n')
+    
     # Create Dataset and DataLoader
     event_transforms = transforms.Compose([
         transforms.RandomHorizontalFlip(p=0.5),
@@ -125,7 +133,10 @@ if __name__ == "__main__":
         scheduler.step()
 
         # print(f'Epoch {epoch}/{epochs}, Loss: {loss.item():.6f}')
-        print(f'Epoch {epoch}/{epochs}: Loss = {loss.item():.6f}')
+        msg = f'Epoch {epoch}/{epochs}: Loss = {loss.item():.6f}'
+        print(msg)
+        with open(f'{workdir}/log.txt', mode='a') as f:
+            f.write(msg + '\n')
         if epoch % 25 == 0:
             print(f'Epoch {epoch}: Saving model, opt, and scheduler...')
             torch.save(model.state_dict(), f'{workdir}/model_epoch_{epoch}.pth')
