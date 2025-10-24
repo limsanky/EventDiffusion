@@ -168,12 +168,14 @@ if __name__ == "__main__":
                     evrep = events_to_EvRep(x, y, timestamps, pol, image_resolution, pol_between_0_and_1=False)
                     loc_evreps.append(evrep)
                 
-                evreps[loc] = np.array(loc_evreps)
+                # evreps[loc] = np.array(loc_evreps)
+                evreps[loc] = torch.from_numpy(np.array(loc_evreps))
                 # Save EvRep as .npy
                 evrep_save_dir = save_dir + f'/evrep_{"test" if is_testing_on_exp else "train"}/'
                 if not os.path.exists(evrep_save_dir):
                     os.makedirs(evrep_save_dir)
-                np.save(evrep_save_dir + f'/evrep_{loc}.npy', evreps[loc])
+                # np.save(evrep_save_dir + f'/evrep_{loc}.npy', evreps[loc])
+                torch.save(evreps[loc], evrep_save_dir + f'/evrep_{loc}.pt')
                 
                 # print(f'EvRep representation for {args.scenario + str(exp) + f"/{loc}"} generated and saved for Split {split}.')
             

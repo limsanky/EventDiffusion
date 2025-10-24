@@ -398,10 +398,7 @@ class EffWNet(nn.Module):
         self.bilinear = bilinear
         self.outer_conv = outer_conv
         
-        # ch1 = 24
-        
-        # if outer_conv:
-        #     self.input_layer = 
+        # ch1 = 24 
         
         n_chs = [ch1 * (2 ** power) for power in range(n_lyr+1)]
         n_rep_dn = [2, 2, 4, 4, 6]
@@ -457,7 +454,7 @@ class EffWNet(nn.Module):
         return ups
 
 
-    def forward(self, x):
+    def forward(self, x, f0):
 
 
         x0 = x
@@ -503,10 +500,11 @@ class EffWNet(nn.Module):
                 ce = c * clean_ie
 
 
-        preds = torch.cat((x, clean_ie, c), dim=1)
+        # preds = torch.cat((x, clean_ie, c), dim=1)
+        f1_pred = self.ce_to_f1(ce, f0)
 
 
-        return preds
+        return f1_pred
 
 
 

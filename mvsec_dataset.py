@@ -29,15 +29,31 @@ class SingleMVSECSampler(Sampler):
 
         self.count = count
 
+    # def __iter__(self):
+    #     indices = []
+    #     for exp in self.training_splits:
+    #         idxs = list(range(1, self.count[exp] + 1))
+    #         random.shuffle(idxs)
+    #         indices.append(idxs)
+
+    #     for first, second in zip(*indices):
+    #         yield [ first, second ]
+    
     def __iter__(self):
         indices = []
+        
         for exp in self.training_splits:
+            # idxs = list(range(self.indices[exp][0] + 1, self.indices[exp][1] + 1))
+            # assert len(idxs) == self.count[exp], f"Length mismatch for {self.scenario}{exp} in split {self.split}: expected {self.count[exp]}, got {len(idxs)}"
+            # for _i in range(len(idxs)):
+            #     assert idxs[_i] > self.indices[exp][0], f"Index out of bounds: {idxs[_i]} is smaller than or equal to {self.indices[exp][0]}"
+            #     assert idxs[_i] <= self.indices[exp][1], f"Index out of bounds: {idxs[_i]} is greater than {self.indices[exp][1]}"
             idxs = list(range(1, self.count[exp] + 1))
             random.shuffle(idxs)
             indices.append(idxs)
 
         for first, second in zip(*indices):
-            yield [first, second]
+            yield [ first, second ]
     
     def __len__(self):
         return self.count
@@ -62,11 +78,15 @@ class MVSECSampler(BatchSampler):
             yield batch
 
     def __len__(self):
-        total_count = sum(self.sampler.count.values())
+        total_count = sum(len(self.sampler.count.values()))
+        print('total_count', total_count, self.sampler.count.values())
+        
         if self.drop_last:
             return total_count // self.batch_size
-        else:
-            return (total_count + self.batch_size - 1) // self.batch_size
+        
+        length = (total_count + self.batch_size - 1) // self.batch_size
+        print('length', length)
+        return length
 
 class MVSECDataset(Dataset):
 
@@ -80,38 +100,43 @@ class MVSECDataset(Dataset):
         self.split = split
         assert split in [1, 2, 3]
         if split == 1:
-            self.training_splits = [2, 3]
+            self.training_splits = (2, 3)
         elif split == 2:
-            self.training_splits = [1, 3]
+            self.training_splits = (1, 3)
         elif split == 3:
-            self.training_splits = [1, 2]
+            self.training_splits = (1, 2)
 
         self.event_data = self.load_event_data()
         self.image_paths = self.load_image_paths()
-        len_of_events = len(self.event_data[self.loc[0]][0]) + len(self.event_data[self.loc[0]][1])
-        len_of_events += len(self.event_data[self.loc[1]][0]) + len(self.event_data[self.loc[1]][1])
-        len_of_images = len(self.image_paths[self.loc[0]]) + len(self.image_paths[self.loc[1]])
-        assert len_of_events == len_of_images, f"Mismatch between event {len_of_events} and image data lengths {len_of_images}"
+        self.len_of_events = len(self.event_data[self.loc[0]][self.training_splits[0]]) + len(self.event_data[self.loc[0]][self.training_splits[1]])
+        self.len_of_events += len(self.event_data[self.loc[1]][self.training_splits[0]]) + len(self.event_data[self.loc[1]][self.training_splits[1]])
+        self.len_of_images = len(self.image_paths[self.loc[0]][self.training_splits[0]]) + len(self.image_paths[self.loc[0]][self.training_splits[1]])
+        self.len_of_images += len(self.image_paths[self.loc[1]][self.training_splits[0]]) + len(self.image_paths[self.loc[1]][self.training_splits[1]])
+        assert self.len_of_events == self.len_of_images, f"Mismatch between event {self.len_of_events} and image data lengths {self.len_of_images}"
 
     def load_event_data(self) -> torch.Tensor:
         event_data = {}
         for loc in self.loc:
-            data = []
+            data = {}
             for exp in self.training_splits:
                 ev_rep_path = os.path.join(self.data_dir, f'{self.scenario}/{self.scenario}{exp}/evrep_train/evrep_{loc}.npy')
+                # ev_rep_path = os.path.join(self.data_dir, f'{self.scenario}/{self.scenario}{exp}/evrep_train/evrep_{loc}.pt')
                 assert os.path.exists(ev_rep_path), f'EvRep file does not exist: {ev_rep_path}'
+                # print(f'Loading EvRep for {self.scenario}{exp} at {loc} camera.')
                 ev_rep = np.load(ev_rep_path)
-                # print(ev_rep.shape)
-                data.append(torch.from_numpy(ev_rep))
-            # print(data[0].shape[0] + data[1].shape[0])
+                data[exp] = torch.from_numpy(ev_rep)
+                # data[exp] = torch.load(ev_rep_path)
+                
             event_data[loc] = data
+            
         return event_data
     
     def load_image_paths(self) -> dict:
         image_paths = {}
         for loc in self.loc:
-            individual_image_paths = []
+            image_paths_for_split = {}
             for exp in self.training_splits:
+                individual_image_paths = []
                 first_index, last_index = SEQUENCES_FRAMES[self.scenario][f'split{self.split}'][self.scenario + str(exp)]
                 image_path = os.path.join(self.data_dir, f'{self.scenario}/{self.scenario}{exp}/images/{loc}/')
                 assert os.path.exists(image_path), f'Image directory does not exist: {image_path}'
@@ -120,41 +145,39 @@ class MVSECDataset(Dataset):
                         continue
                     individual_image_path = os.path.join(image_path, img)
                     individual_image_paths.append(individual_image_path)
-            # print(len(individual_image_paths))
-            image_paths[loc] = individual_image_paths
-        # exit()
+                    
+                image_paths_for_split[exp] = individual_image_paths
+            
+            image_paths[loc] = image_paths_for_split
+        
         return image_paths
     
     def __len__(self):
         return len(self.event_data) - 1
     
     def __getitem__(self, index):
-        # print('hi', index)
-        # exit()
-    
         image_data = {}
         event_data = {}
         
         for loc in self.loc:
             
-            loc_event_data = self.event_data[loc]
-            # print(loc_event_data[0].shape, loc_event_data[1].shape)
-            # exit()
-            event_data_at_loc = [ loc_event_data[i][index[i] + 1] for i in range(len(self.training_splits)) ]
+            loc_event_data: dict = self.event_data[loc]
+            
+            event_data_at_loc = [ (loc_event_data.get(s)[i], i) for s, i in zip(self.training_splits, index) ]
             
             if self.event_transforms:
-                event_data_at_loc = self.event_transforms(event_data_at_loc)
-                    
-            for i in range(len(self.training_splits)):
-                images_at_t0 = Image.open(self.image_paths[loc][index[i]])
-                images_at_t1 = Image.open(self.image_paths[loc][index[i] + 1])
-                
-                if self.image_transforms:
-                    images_at_t0 = self.image_transforms(images_at_t0)
-                    images_at_t1 = self.image_transforms(images_at_t1)
-                    
+                event_data_at_loc = [ (self.event_transforms(_events), _i) for (_events, _i) in event_data_at_loc ]
+            
+            loc_image_data_at_split = [ self.image_paths[loc][s] for s in self.training_splits ]
+            images_at_t0 = [ (Image.open(loc_image_data_at_split[pos][i - 1]), i - 1) for pos, i in enumerate(index) ]
+            images_at_t1 = [ (Image.open(loc_image_data_at_split[pos][i]), i) for pos, i in enumerate(index) ]
+
+            if self.image_transforms:
+                images_at_t0 = [ (self.image_transforms(img), i) for (img, i) in images_at_t0 ]
+                images_at_t1 = [ (self.image_transforms(img), i) for (img, i) in images_at_t1 ]
+
             event_data[loc] = event_data_at_loc
-            image_data[loc] = (images_at_t0, images_at_t1)
+            image_data[loc] = { f'{s}': (images_at_t0[0], images_at_t1[0]) for s in self.training_splits }
             
         return (event_data, image_data)
     

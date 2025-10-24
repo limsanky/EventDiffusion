@@ -130,7 +130,7 @@ if __name__=='__main__':
                 save_depth_gt_dir = save_dir + '/depth_gt'
                 min_depth_gt = np.min(depth_gt[synchronization_index])
                 max_depth_gt = np.max(depth_gt[synchronization_index])
-                depth_gt_normalized = (255 * (depth_gt[synchronization_index] - min_depth_gt) / (max_depth_gt - min_depth_gt)).astype(np.uint8)
+                depth_gt_normalized = (255. * (depth_gt[synchronization_index] - min_depth_gt) / (max_depth_gt - min_depth_gt)).astype(np.uint8)
                 if not os.path.exists(save_depth_gt_dir):
                     os.makedirs(save_depth_gt_dir)
                 cv2.imwrite(save_depth_gt_dir + f'/{file_name}.png', depth_gt_normalized)
