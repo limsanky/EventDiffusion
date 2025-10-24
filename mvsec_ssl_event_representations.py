@@ -9,6 +9,7 @@ import torchvision.transforms.v2 as transforms
 from mvsec_dataset import MVSECDataset, MVSECSampler, SingleMVSECSampler
 from copy import deepcopy
 import math
+from tqdm import tqdm
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -60,12 +61,15 @@ if __name__ == "__main__":
     with open(f'{workdir}/model_info.txt', mode='w') as f:
         f.write(str(model_stats))
     
-    optimizer = torch.optim.RAdam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.RAdam(model.parameters(), lr=learning_rate, betas=(0.9, 0.999))
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)
 
-    for epoch in range(epochs):
-        print(f'Starting epoch {epoch+1}/{epochs}...')
-        for (event_data, image_data) in dataloader:
+    # print(len(dataloader))
+    # exit()
+    for epoch in range(1, epochs + 1):
+        # print(f'Starting epoch {epoch}/{epochs}...')
+        # for (event_data, image_data) in dataloader:
+        for (event_data, image_data) in tqdm(dataloader, total=len(dataloader), desc=f'Epoch {epoch}/{epochs + 1}'):
             optimizer.zero_grad()
             
             events_left = event_data['left']
@@ -118,13 +122,15 @@ if __name__ == "__main__":
             loss.backward()
             
             optimizer.step()
-            scheduler.step()
+        scheduler.step()
 
+        # print(f'Epoch {epoch}/{epochs}, Loss: {loss.item():.6f}')
+        print(f'Epoch {epoch}/{epochs}: Loss = {loss.item():.6f}')
         if epoch % 25 == 0:
-            print(f'Epoch {epoch}/{epochs}, Loss: {loss.item():.6f}')
+            print(f'Epoch {epoch}: Saving model, opt, and scheduler...')
             torch.save(model.state_dict(), f'{workdir}/model_epoch_{epoch}.pth')
             torch.save(optimizer.state_dict(), f'{workdir}/optimizer_epoch_{epoch}.pth')
-            torch.save(scheduler.state_dict(), f'{workdir}/scheduler_epoch_{epoch}.pth')
+            torch.save(scheduler.state_dict(), f'{workdir}/scheduler_epoch_{epoch}.pth')        
     
     # ev_rep_data = []
     

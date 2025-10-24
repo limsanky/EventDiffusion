@@ -56,7 +56,9 @@ class SingleMVSECSampler(Sampler):
             yield [ first, second ]
     
     def __len__(self):
-        return self.count
+        output = sum(self.count.values())
+        output = 2 * output # Since there are left AND right cameras
+        return output
 
 class MVSECSampler(BatchSampler):
     def __init__(self, sampler, batch_size: int, drop_last: bool = False):
@@ -78,14 +80,18 @@ class MVSECSampler(BatchSampler):
             yield batch
 
     def __len__(self):
-        total_count = sum(len(self.sampler.count.values()))
-        print('total_count', total_count, self.sampler.count.values())
+        # print('hi', sum(self.sampler.count.values()))
+        # exit()
+        total_count = self.sampler.__len__()
+        # print('total_count', total_count, sum(self.sampler.count.values()))
+        # exit()
         
         if self.drop_last:
             return total_count // self.batch_size
         
         length = (total_count + self.batch_size - 1) // self.batch_size
-        print('length', length)
+        # print('length', length)
+        # exit()
         return length
 
 class MVSECDataset(Dataset):
