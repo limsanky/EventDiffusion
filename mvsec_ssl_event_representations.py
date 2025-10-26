@@ -7,7 +7,6 @@ from torchsummary import summary
 from torch.utils.data import DataLoader
 import torchvision.transforms.v2 as transforms
 from mvsec_dataset import MVSECDataset, MVSECSampler, SingleMVSECSampler
-from copy import deepcopy
 import math
 from tqdm import tqdm
 
@@ -92,11 +91,8 @@ if __name__ == "__main__":
         optimizer.load_state_dict(torch.load(f'{workdir}/optimizer_epoch_{resume_epoch}.pt'))
         scheduler.load_state_dict(torch.load(f'{workdir}/scheduler_epoch_{resume_epoch}.pt'))
     
-    # print(len(dataloader))
-    # exit()
     for epoch in range(1, epochs + 1):
-        # print(f'Starting epoch {epoch}/{epochs}...')
-        # for (event_data, image_data) in dataloader:
+        
         for (event_data, image_data) in tqdm(dataloader, total=len(dataloader), desc=f'Epoch {epoch}/{epochs}'):
             optimizer.zero_grad()
             
@@ -107,14 +103,6 @@ if __name__ == "__main__":
             image_at_t0_right, image_at_t1_right = image_data['right']
             image_at_t0_left, image_at_t1_left = image_at_t0_left.to(device), image_at_t1_left.to(device)
             image_at_t0_right, image_at_t1_right = image_at_t0_right.to(device), image_at_t1_right.to(device)
-
-            # print('event_data_left:', event_data_left.shape)
-            # print('event_data_right:', event_data_right.shape)
-            # print('image_at_t0_left:', image_at_t0_left.shape)
-            # print('image_at_t1_left:', image_at_t1_left.shape)
-            # print('image_at_t0_right:', image_at_t0_right.shape)
-            # print('image_at_t1_right:', image_at_t1_right.shape)
-            # exit()
             
             events = torch.cat([event_data_left, event_data_right], dim=0)
             t0_images = torch.cat([image_at_t0_left, image_at_t0_right], dim=0)
@@ -132,71 +120,12 @@ if __name__ == "__main__":
                 loss = torch.abs(output - t1_images)
             elif loss_type == 'ph':
                 c = 0.00054 * math.sqrt(math.prod(t0_images.shape[1:]))
-                loss: torch.Tensor = ((output - t1_images).square() + (c**2)).sqrt() - c
+                loss: torch.Tensor = ((output - t1_images).square() + (c ** 2)).sqrt() - c
             
             loss = loss.mean()
             loss.backward()
             optimizer.step()
         scheduler.step()
-        
-    # for epoch in range(1, epochs + 1):
-    #     # print(f'Starting epoch {epoch}/{epochs}...')
-    #     # for (event_data, image_data) in dataloader:
-    #     for (event_data, image_data) in tqdm(dataloader, total=len(dataloader), desc=f'Epoch {epoch}/{epochs + 1}'):
-    #         optimizer.zero_grad()
-            
-    #         events_left = event_data['left']
-    #         events_right = event_data['right']
-
-    #         image_t0_left_split2, image_t1_left_split2 = image_data['left']['2']
-    #         image_t0_right_split2, image_t1_right_split2 = image_data['right']['2']
-            
-    #         image_t0_left_split3, image_t1_left_split3 = image_data['left']['3']
-    #         image_t0_right_split3, image_t1_right_split3 = image_data['right']['3']
-
-    #         # Concatenate left and right events for the splits:
-    #         split_2_events = torch.cat([ events_left[0][0], events_right[0][0] ], dim=0).to(device)
-    #         split_3_events = torch.cat([ events_left[1][0], events_right[1][0] ], dim=0).to(device)
-
-    #         # Concatenate left and right images for the splits:
-    #         split_2_images_t0 = torch.cat([ image_t0_left_split2[0], image_t0_right_split2[0] ], dim=0)
-    #         split_2_images_t1 = torch.cat([ image_t1_left_split2[0], image_t1_right_split2[0] ], dim=0)
-    #         split_3_images_t0 = torch.cat([ image_t0_left_split3[0], image_t0_right_split3[0] ], dim=0)
-    #         split_3_images_t1 = torch.cat([ image_t1_left_split3[0], image_t1_right_split3[0] ], dim=0)
-
-    #         # Concatenate t0 and t1 images for the splits:
-    #         split_2_images = torch.cat([ split_2_images_t0, split_2_images_t1 ], dim=1).to(device)
-    #         split_3_images = torch.cat([ split_3_images_t0, split_3_images_t1 ], dim=1).to(device)
-
-    #         # print('split_2_events:', split_2_events.shape)
-    #         # print('split_3_events:', split_3_events.shape)
-    #         # print('split_2_images:', split_2_images.shape)
-    #         # print('split_3_images:', split_3_images.shape)
-    #         # exit()
-            
-    #         # Concatenate all event data:
-    #         events = torch.cat([split_2_events, split_3_events], dim=0).to(device)
-            
-    #         t0_images = torch.cat([split_2_images_t0, split_3_images_t0], dim=0).to(device)
-    #         t1_images = torch.cat([split_2_images_t1, split_3_images_t1], dim=0).to(device)
-    #         # print('events:', events.shape)
-    #         # print('t0_images:', t0_images.shape)
-    #         # print('split_2_images_t0:', split_2_images_t0.shape)
-    #         # print('split_3_images_t0:', split_3_images_t0.shape)
-    #         # exit()
-            
-    #         output = model(events, t0_images)
-            
-    #         # loss = torch.nn.functional.mse_loss(output, t1_images)
-    #         # c = 0.00054 * math.sqrt(math.prod(t0_images.shape[1:]))
-    #         # loss: torch.Tensor = ((output - t1_images).square() + (c**2)).sqrt() - c
-    #         loss = torch.abs(output - t1_images)
-    #         loss = loss.mean()
-            
-    #         loss.backward()
-            
-    #         optimizer.step()
-    #     scheduler.step()
 
         # print(f'Epoch {epoch}/{epochs}, Loss: {loss.item():.6f}')
         msg = f'Epoch {epoch}/{epochs}: Loss = {loss.item():.6f}'
@@ -208,23 +137,3 @@ if __name__ == "__main__":
             torch.save(model.state_dict(), f'{workdir}/model_epoch_{epoch}.pt')
             torch.save(optimizer.state_dict(), f'{workdir}/optimizer_epoch_{epoch}.pt')
             torch.save(scheduler.state_dict(), f'{workdir}/scheduler_epoch_{epoch}.pt')        
-    
-    # ev_rep_data = []
-    
-    # for loc in ['left', 'right']:
-    #     for exp in EXPERIMENTS[scenario]:
-    #         if exp == split:
-    #             continue
-
-    #         ev_rep_dir = Path(data_dir) / f'{scenario}/{scenario}{exp}/evrep_train/evrep_{loc}.npy'
-    #         assert ev_rep_dir.exists(), ev_rep_dir
-            
-    #         ev_rep = torch.from_numpy(np.load(ev_rep_dir)).float()
-    #         # print(ev_rep.min(), ev_rep.max())
-    #         ev_rep_data.append(ev_rep)
-    
-    # for _data in ev_rep_data:
-    #     print(_data.shape)
-    
-    
-    
