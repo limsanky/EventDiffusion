@@ -11,8 +11,6 @@ import math
 from tqdm import tqdm
 import torchvision.utils as vutils
 
-# torch.set_float32_matmul_precision('high')
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--workdir', default='/root/code/EventDiffusion/', type=str)
@@ -92,7 +90,7 @@ if __name__ == "__main__":
         f.write(str(model_stats))
     
     model.to(device)
-    # model.compile()
+    model.compile()
     
     optimizer = torch.optim.RAdam(model.parameters(), lr=learning_rate, betas=(0.9, 0.999))
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
@@ -142,6 +140,7 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
             total_epoch_loss += loss.item()
+            # print(f'  |_ Batch Loss: {loss.item():.6f}')
             
         scheduler.step()
 
