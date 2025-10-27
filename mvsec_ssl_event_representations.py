@@ -92,7 +92,7 @@ if __name__ == "__main__":
         f.write(str(model_stats))
     
     model.to(device)
-    model.compile()
+    # model.compile()
     
     optimizer = torch.optim.RAdam(model.parameters(), lr=learning_rate, betas=(0.9, 0.999))
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
@@ -123,11 +123,15 @@ if __name__ == "__main__":
             t0_images = torch.cat([image_at_t0_left, image_at_t0_right], dim=0)
             t1_images = torch.cat([image_at_t1_left, image_at_t1_right], dim=0)
             # print('events:', events.min(), events.max(), events.shape)
+            # print('image_at_t0_left:', image_at_t0_left.min(), image_at_t0_left.max(), image_at_t0_left.shape)
             # print('t0_images:', t0_images.min(), t0_images.max(), t0_images.shape)
             # print('t1_images:', t1_images.min(), t1_images.max(), t1_images.shape)
             # exit()
 
             output = model(events, t0_images)
+            
+            print(output.shape)
+            exit()
             
             if loss_type == 'mse':
                 loss = torch.square(output - t1_images)
@@ -155,17 +159,17 @@ if __name__ == "__main__":
             torch.save(scheduler.state_dict(), f'{workdir}/scheduler_epoch_{epoch}.pt')
             if save_images:
                 # Save some example images from the last batch
-                _image_at_t0_left = (image_at_t0_left * 255).clamp(0, 255).to(torch.uint8).contiguous()
-                _image_at_t1_left = (image_at_t1_left * 255).clamp(0, 255).to(torch.uint8).contiguous()
+                _image_at_t0_left = (image_at_t0_left[0:1, :, :, :] * 255).clamp(0, 255).to(torch.uint8).contiguous()
+                _image_at_t1_left = (image_at_t1_left[0:1, :, :, :] * 255).clamp(0, 255).to(torch.uint8).contiguous()
                 vutils.save_image(_image_at_t0_left.float(), f'{workdir}/images/E{epoch}_left_t0.png', normalize=True)
                 vutils.save_image(_image_at_t1_left.float(), f'{workdir}/images/E{epoch}_left_t1.png', normalize=True)
                 
                 pred_image_at_t1_left = (output[0:1, :, :, :] * 255).clamp(0, 255).to(torch.uint8).contiguous()
                 vutils.save_image(pred_image_at_t1_left.float(), f'{workdir}/images/E{epoch}_left_t1_pred.png', normalize=True)
 
-                event_data_left_ch0 = event_data_left[:, 0:1, :, :]
-                event_data_left_ch1 = event_data_left[:, 1:2, :, :]
-                event_data_left_ch2 = event_data_left[:, 2:3, :, :]
+                event_data_left_ch0 = event_data_left[0:1, 0:1, :, :]
+                event_data_left_ch1 = event_data_left[0:1, 1:2, :, :]
+                event_data_left_ch2 = event_data_left[0:1, 2:3, :, :]
                 vutils.save_image(event_data_left_ch0.float(), f'{workdir}/images/E{epoch}_event_left_ch0.png', normalize=True)
                 vutils.save_image(event_data_left_ch1.float(), f'{workdir}/images/E{epoch}_event_left_ch1.png', normalize=True)
                 vutils.save_image(event_data_left_ch2.float(), f'{workdir}/images/E{epoch}_event_left_ch2.png', normalize=True)
