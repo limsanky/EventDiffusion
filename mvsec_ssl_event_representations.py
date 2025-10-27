@@ -130,9 +130,6 @@ if __name__ == "__main__":
 
             output = model(events, t0_images)
             
-            print(output.shape)
-            exit()
-            
             if loss_type == 'mse':
                 loss = torch.square(output - t1_images)
             elif loss_type == 'l1':
