@@ -7,7 +7,7 @@ from PIL import Image
 from mvsec_helper import SEQUENCES_FRAMES
 
 class SingleMVSECSampler(Sampler):
-    def __init__(self, scenario: str, split: int):
+    def __init__(self, scenario: str, split: int, is_training: bool):
         self.scenario = scenario
         self.split = split
         assert split in [1, 2, 3]
@@ -17,16 +17,24 @@ class SingleMVSECSampler(Sampler):
             self.training_splits = [1, 3]
         elif split == 3:
             self.training_splits = [1, 2]
-        
+        self.is_training = is_training
         count = {}
         self.indices = {}
-        for exp in self.training_splits:
+        
+        if is_training:
+            for exp in self.training_splits:
+                first_index, last_index = SEQUENCES_FRAMES[self.scenario][f'split{self.split}'][self.scenario + str(exp)]
+                self.indices[exp] = (first_index, last_index)
+                count[exp] = last_index - first_index + 1
+                count[exp] = count[exp] - 1  # Because we return a PAIR of images
+                # print(f'Number of samples for {self.scenario}{exp} in split {self.split}: {count[exp]}')
+        else:
+            exp = self.split
             first_index, last_index = SEQUENCES_FRAMES[self.scenario][f'split{self.split}'][self.scenario + str(exp)]
             self.indices[exp] = (first_index, last_index)
             count[exp] = last_index - first_index + 1
             count[exp] = count[exp] - 1  # Because we return a PAIR of images
-            # print(f'Number of samples for {self.scenario}{exp} in split {self.split}: {count[exp]}')
-
+        
         self.count = count
     
     def __iter__(self):
@@ -41,22 +49,34 @@ class SingleMVSECSampler(Sampler):
         #     yield [ first, second ]
         
         return_indices = []
-        all_indices = np.random.randint(0, self.__len__(), size=(self.__len__(),))
+        all_indices = np.random.randint(1, self.__len__() + 1, size=(self.__len__(),))
+        # all_indices = [ i for i in range(1, self.__len__() + 1) ]
+        # all_indices.reverse()
         # all_indices = np.random.randint(1415, 1425, size=(10,))
         total_count = 0
 
-        for exp in self.training_splits:
+        if self.is_training:
+            for exp in self.training_splits:
+                split_count = self.count[exp]
+                for i in all_indices:
+                    if (i <= total_count + split_count) and (i > total_count):
+                        idx = i - total_count
+                        return_indices.append((idx, exp))
+                        # if exp == 3:
+                        #     print(f'appended index {idx} for exp {exp}')
+                        #     exit()
+                        # else:
+                        #     print(f'appended index {idx} for exp {exp}')
+                total_count += split_count
+        else:
+            exp = self.split
             split_count = self.count[exp]
             for i in all_indices:
-                if (i < total_count + split_count) and (i >= total_count):
+                if (i <= total_count + split_count) and (i > total_count):
                     idx = i - total_count
-                    # if total_count != 0:
-                        # print(idx, i)
-                        # exit()
-                    # return_indices.append((i, exp))
                     return_indices.append((idx, exp))
             total_count += split_count
-        # exit()
+        
         assert len(return_indices) == self.__len__(), f'Length mismatch: {len(return_indices)} vs {self.__len__()}'
 
         for idx, exp in return_indices:
@@ -103,11 +123,12 @@ class MVSECSampler(BatchSampler):
 
 class MVSECDataset(Dataset):
 
-    def __init__(self, data_dir: str, scenario: str, split: int, event_transforms=None, image_transforms=None):
+    def __init__(self, data_dir: str, scenario: str, split: int, is_training: bool, event_transforms=None, image_transforms=None):
         super().__init__()
         self.loc = ['left', 'right']
         self.data_dir = data_dir
         self.scenario = scenario
+        self.is_training = is_training
         self.event_transforms = event_transforms
         self.image_transforms = image_transforms
         self.split = split
@@ -119,14 +140,58 @@ class MVSECDataset(Dataset):
         elif split == 3:
             self.training_splits = (1, 2)
 
-        self.event_data = self.load_event_data()
-        self.image_paths = self.load_image_paths()
-        self.len_of_events = len(self.event_data[self.loc[0]][self.training_splits[0]]) + len(self.event_data[self.loc[0]][self.training_splits[1]])
-        self.len_of_events += len(self.event_data[self.loc[1]][self.training_splits[0]]) + len(self.event_data[self.loc[1]][self.training_splits[1]])
-        self.len_of_images = len(self.image_paths[self.loc[0]][self.training_splits[0]]) + len(self.image_paths[self.loc[0]][self.training_splits[1]])
-        self.len_of_images += len(self.image_paths[self.loc[1]][self.training_splits[0]]) + len(self.image_paths[self.loc[1]][self.training_splits[1]])
-        assert self.len_of_events == self.len_of_images, f"Mismatch between event {self.len_of_events} and image data lengths {self.len_of_images}"
+        if is_training:
+            self.event_data = self.load_event_data()
+            self.image_paths = self.load_image_paths()
+            self.len_of_events = len(self.event_data[self.loc[0]][self.training_splits[0]]) + len(self.event_data[self.loc[0]][self.training_splits[1]])
+            self.len_of_events += len(self.event_data[self.loc[1]][self.training_splits[0]]) + len(self.event_data[self.loc[1]][self.training_splits[1]])
+            self.len_of_images = len(self.image_paths[self.loc[0]][self.training_splits[0]]) + len(self.image_paths[self.loc[0]][self.training_splits[1]])
+            self.len_of_images += len(self.image_paths[self.loc[1]][self.training_splits[0]]) + len(self.image_paths[self.loc[1]][self.training_splits[1]])
+        else:
+            self.event_data = self.load_event_test_data()
+            self.image_paths = self.load_image_test_paths()
+            self.len_of_events = len(self.event_data[self.loc[0]][self.split]) 
+            self.len_of_events += len(self.event_data[self.loc[1]][self.split])
+            self.len_of_images = len(self.image_paths[self.loc[0]][self.split])
+            self.len_of_images += len(self.image_paths[self.loc[1]][self.split])
 
+        assert self.len_of_events == self.len_of_images, f"Mismatch between event {self.len_of_events} and image data lengths {self.len_of_images}"
+        
+    def load_event_test_data(self) -> torch.Tensor:
+        event_data = {}
+        exp = self.split
+        for loc in self.loc:
+            data = {}
+            ev_rep_path = os.path.join(self.data_dir, f'{self.scenario}/{self.scenario}{exp}/evrep_test/evrep_{loc}.pt')
+            assert os.path.exists(ev_rep_path), f'EvRep file does not exist: {ev_rep_path}'
+            print(f'Loading EvRep for {self.scenario}{exp} at {loc} camera.')
+            ev_rep = torch.load(ev_rep_path)
+            data[exp] = ev_rep
+            
+            event_data[loc] = data
+            
+        return event_data
+    
+    def load_image_test_paths(self) -> dict:
+        image_paths = {}
+        exp = self.split
+        for loc in self.loc:
+            image_paths_for_split = {}
+            individual_image_paths = []
+            first_index, last_index = SEQUENCES_FRAMES[self.scenario][f'split{self.split}'][self.scenario + str(exp)]
+            image_path = os.path.join(self.data_dir, f'{self.scenario}/{self.scenario}{exp}/images/{loc}/')
+            assert os.path.exists(image_path), f'Image directory does not exist: {image_path}'
+            for idx, img in enumerate(os.listdir(image_path)):
+                if idx < first_index or idx > last_index:
+                    continue
+                individual_image_path = os.path.join(image_path, img)
+                individual_image_paths.append(individual_image_path)
+            
+            image_paths_for_split[exp] = individual_image_paths
+            image_paths[loc] = image_paths_for_split
+        
+        return image_paths
+    
     def load_event_data(self) -> torch.Tensor:
         event_data = {}
         for loc in self.loc:
@@ -173,6 +238,7 @@ class MVSECDataset(Dataset):
         event_data = {}
         
         idx, split = index
+        assert idx - 1 >= 0, f'Index must be at least 1 to get image pair, got {idx}'
         
         for loc in self.loc:
             
@@ -194,7 +260,9 @@ class MVSECDataset(Dataset):
             # exit()
             image_at_t0 = Image.open(loc_image_data_at_split[idx - 1])
             image_at_t1 = Image.open(loc_image_data_at_split[idx])
-            
+            # if loc == 'left':
+            #     print('image left t0:', loc_image_data_at_split[idx - 1])
+            #     print('image left t1:', loc_image_data_at_split[idx])
             # images_at_t0 = [ (Image.open(loc_image_data_at_split[pos][i - 1]), i - 1) for pos, i in enumerate(index) ]
             # images_at_t1 = [ (Image.open(loc_image_data_at_split[pos][i]), i) for pos, i in enumerate(index) ]
 
