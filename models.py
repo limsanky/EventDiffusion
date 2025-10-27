@@ -390,7 +390,7 @@ class EffNet(nn.Module):
 
 
 class EffWNet(nn.Module):
-    def __init__(self, n_channels, out_depth, inc_f0=1, bilinear=False, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False, device="cuda:1", outer_conv=False):
+    def __init__(self, n_channels, out_depth, inc_f0=1, bilinear=False, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False, outer_conv=False):
         super(EffWNet, self).__init__()
         self.n_channels = n_channels
         self.out_depth = out_depth
@@ -438,7 +438,7 @@ class EffWNet(nn.Module):
 
 
         # self.out_f1f0 = OutF1F0(out_depth, out_depth)
-        self.ce_to_f1 = CE2F1()
+        # self.ce_to_f1 = CE2F1()
         # self.outf1 = OutF1F0(device)
 
 
@@ -454,7 +454,7 @@ class EffWNet(nn.Module):
         return ups
 
 
-    def forward(self, x, f0):
+    def forward(self, x):
 
 
         x0 = x
@@ -499,16 +499,22 @@ class EffWNet(nn.Module):
                 # print(c.shape)
                 ce = c * clean_ie
 
+        return (clean_ie, c, ce)
+        # f1_pred = self.ce_to_f1(ce, f0)
+        # return f1_pred
 
-        # preds = torch.cat((x, clean_ie, c), dim=1)
+
+class SSLEventModel(nn.Module):
+    def __init__(self, n_channels, out_depth, inc_f0=1, bilinear=False, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False, outer_conv=False):
+        super().__init__()
+        self.effwnet = EffWNet(n_channels, out_depth, inc_f0, bilinear, n_lyr, ch1, c_is_const, c_is_scalar, outer_conv)
+        self.ce_to_f1 = CE2F1()
+    
+    def forward(self, event_data, f0):
+        clean_ie, c, ce = self.effwnet(event_data)
         f1_pred = self.ce_to_f1(ce, f0)
-
-
         return f1_pred
-
-
-
-
+        
 
 class OutCls_conv(nn.Module):
     def __init__(self, in_channels, mid_channels, out_channels):
