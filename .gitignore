@@ -1,3 +1,5 @@
 experiments/*
 __pycache__/*
 tests/*
+pretrained_models/*
+smnet_model/*
