@@ -22,8 +22,8 @@ if __name__ == "__main__":
     parser.add_argument('--lr', default=1e-3, type=float)
     parser.add_argument('--bs', default=4, type=int)
     parser.add_argument('--loss_type', default='l1', type=str)
-    parser.add_argument('--resume_epoch', default=-1, type=int)
-    parser.add_argument('--save_freq', default=1, type=int)
+    parser.add_argument('--resume_epoch', default=0, type=int)
+    parser.add_argument('--save_freq', default=4, type=int)
     parser.add_argument('--save_images', default=False, type=bool)
     args = parser.parse_args()
     
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     model.to(device)
     model.compile()
     
-    optimizer = torch.optim.RAdam(model.parameters(), lr=learning_rate, betas=(0.9, 0.999))
+    optimizer = torch.optim.RAdam(model.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
     
     if resume_epoch > 0:
@@ -102,12 +102,13 @@ if __name__ == "__main__":
         scheduler.load_state_dict(torch.load(f'{workdir}/scheduler_epoch_{resume_epoch}.pt'))
     
     model.train()
-    for epoch in range(1, epochs + 1):
+    for epoch in range(resume_epoch + 1, epochs + 1):
         
         total_epoch_loss = 0
         
-        for (event_data, image_data) in tqdm(dataloader, total=len(dataloader), desc=f'Epoch {epoch}/{epochs}'):
+        for (event_data, image_data, depth_data) in tqdm(dataloader, total=len(dataloader), desc=f'Epoch {epoch}/{epochs}'):
             optimizer.zero_grad()
+            assert depth_data is None
             
             event_data_left = event_data['left'].to(device)
             event_data_right = event_data['right'].to(device)
