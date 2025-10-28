@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from models import DoubleConv, default_bn, default_act, TimesC, OutMatrixC, UpMB, DownMB, get_padding_mode
+from smnet_model.stereo_matching import StereoMatchingNet
 
 class DepthPred(nn.Module):
     """(convolution => [LN] => ReLU) * 2"""
@@ -16,7 +17,7 @@ class DepthPred(nn.Module):
         self.num_hidden_layers = num_hidden_layers
         
         layers = [
-            nn.Conv2d(in_channels, in_channels, kernel_size=3, padding="same", padding_mode=get_padding_mode(), bias=True),
+            nn.Conv2d(in_channels, in_channels, kernel_size=3, padding="same", padding_mode=get_padding_mode(), bias=False),
             default_bn(in_channels),
             default_act(),
         ]
@@ -27,31 +28,31 @@ class DepthPred(nn.Module):
                 next_middle_channels = in_channels // (2 ** (i + 1))
                 
                 layers.append(
-                    nn.Conv2d(current_middle_channels, next_middle_channels, kernel_size=3, padding="same", padding_mode=get_padding_mode(), bias=True)
+                    nn.Conv2d(current_middle_channels, next_middle_channels, kernel_size=3, padding="same", padding_mode=get_padding_mode(), bias=False)
                 )
                 layers.append(default_bn(next_middle_channels))
                 layers.append(default_act())
 
             current_middle_channels = in_channels // (2 ** (num_hidden_layers - 1))
-            layers.append(
-                nn.Conv2d(current_middle_channels, out_channels, kernel_size=1, padding="same", padding_mode=get_padding_mode(), bias=True),
+            layers.extend([
+                nn.Conv2d(current_middle_channels, out_channels, kernel_size=1, padding="same", padding_mode=get_padding_mode(), bias=False),
                 default_act(act_type='relu'),
-            )
+            ])
         else:
-            layers.append(
+            layers.extend([
                 nn.Conv2d(in_channels, in_channels, kernel_size=3, padding="same", padding_mode=get_padding_mode(), bias=False),
                 default_bn(in_channels),
                 default_act(),
                 nn.Conv2d(in_channels, out_channels, kernel_size=1, padding="same", padding_mode=get_padding_mode(), bias=False),
                 default_act(act_type='relu'),
-            )
+            ])
         
         self.double_conv = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.double_conv(x)# + x_ie
     
-class DepthEffWNet(nn.Module):
+class EventEffWNetEncoder(nn.Module):
     def __init__(self, n_channels, out_depth=1, inc_f0=1, bilinear=False, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False, outer_conv=False, depthnet_hidden_layers=3):
         super().__init__()
         self.n_channels = n_channels
@@ -80,18 +81,6 @@ class DepthEffWNet(nn.Module):
             self.downs.append(lyr)
         
         self.ups = self.ups_builder()
-        
-        self.depth_pred = DepthPred(n_chs[0], out_depth, num_hidden_layers=depthnet_hidden_layers)
-
-    def freeze_encoder(self):
-        for param in self.inc.parameters():
-            param.requires_grad = False
-            
-        for param in self.downs.parameters():
-            param.requires_grad = False
-            
-        for param in self.ups.parameters():
-            param.requires_grad = False
 
     def ups_builder(self):
         ups = nn.ModuleList()
@@ -108,13 +97,14 @@ class DepthEffWNet(nn.Module):
     def forward(self, x):
         x0 = x
         
+        # print('x0', x0.shape)
         x1 = self.inc(x0)
+        # print('x1', x1.shape)
         xs = [x1]
 
         for dn in self.downs:
             tmp_x = dn(xs[-1])
-            # print("dn")
-            # print(tmp_x.shape)
+            # print("dn", tmp_x.shape)
             xs.append(tmp_x)
 
         # print()
@@ -126,24 +116,78 @@ class DepthEffWNet(nn.Module):
             # print("xr", xr.shape)
             x_ie = up(x_ie, xr)
             # print(x_ie.shape)
-        
-        depth = self.depth_pred(x_ie)
-        return depth
+        # exit()
+        return x_ie
 
         
 class DepthFromEventsModel(nn.Module):
-    def __init__(self, n_channels, out_depth, inc_f0=1, bilinear=False, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False, outer_conv=False, depthnet_hidden_layers=2):
+    def __init__(self, use_images:bool, n_channels, out_depth, inc_f0=1, bilinear=False, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False, outer_conv=False, depthnet_hidden_layers=2):
         super().__init__()
-        self.effwnet = DepthEffWNet(n_channels, out_depth, inc_f0, bilinear, n_lyr, ch1, c_is_const, c_is_scalar, outer_conv, depthnet_hidden_layers=depthnet_hidden_layers)
-    
-    def freeze_encoder(self):
-        self.effwnet.freeze_encoder()
+        self.use_images = use_images
         
-    def forward(self, event_data):
-        pred = self.effwnet(event_data)
-        return pred
+        self.effwnet = EventEffWNetEncoder(n_channels, out_depth, inc_f0, bilinear, n_lyr, ch1, c_is_const, c_is_scalar, outer_conv, depthnet_hidden_layers=depthnet_hidden_layers)
+        
+        n_chs = [ch1 * (2 ** power) for power in range(n_lyr+1)]
+        depth_effwnet_n_channels = 2 * n_chs[0]
+        
+        if use_images:
+            self.img_effwnet = EventEffWNetEncoder(1, out_depth, inc_f0, bilinear, n_lyr, ch1, 
+                                                    c_is_const, c_is_scalar, outer_conv, 
+                                                    depthnet_hidden_layers=depthnet_hidden_layers+1)
+            depth_effwnet_n_channels += 2 * n_chs[0]
+            
+            
+        self.depth_effwnet = EventEffWNetEncoder(depth_effwnet_n_channels, out_depth, inc_f0, bilinear, n_lyr + 1, ch1,
+                                                 c_is_const, c_is_scalar, outer_conv,
+                                                 depthnet_hidden_layers=depthnet_hidden_layers+1)
+        
+        self.depth_pred = DepthPred(n_chs[0], out_depth, num_hidden_layers=depthnet_hidden_layers)
+        
+        # self.depth_pred = DepthPred(2 * n_chs[0], out_depth, num_hidden_layers=depthnet_hidden_layers)
+
+        # self.stereo_matching = StereoMatchingNet(max_disp=192, in_channels=2 * n_chs[0], num_downsample=2)
+
+    def freeze_encoder(self):
+        with torch.no_grad():
+            for param in self.effwnet.parameters():
+                param.requires_grad = False
     
+    # def forward(self, event_data):
+    #     event_latents = self.effwnet(event_data)
+    #     print('event_latents', event_latents.shape)
+    #     event_latents = event_latents.reshape(-1, 2 * event_latents.shape[1], event_latents.shape[2], event_latents.shape[3])
+    #     print('after reshape event_latents', event_latents.shape)
+    #     depth = self.depth_pred(event_latents)
+    #     print('depth', depth.shape)
+    #     exit()
+    #     return event_latents, depth
     
+    def forward(self, event_data, image_input=None):
+        if self.use_images:
+            assert image_input is not None, "image_input should be provided when use_images is True."
+
+        event_latents = self.effwnet(event_data)
+        assert event_latents.shape[0] % 2 == 0, "Batch size of event_latents should be even."
+        # print('event_latents', event_latents.shape)
+        event_latents = event_latents.reshape(-1, 2 * event_latents.shape[1], event_latents.shape[2], event_latents.shape[3])
+        # print('after reshape event_latents', event_latents.shape)
+        if self.use_images:
+            image_latents = self.img_effwnet(image_input)
+            assert image_latents.shape[0] % 2 == 0, "Batch size of image_latents should be even."
+            # print('image_latents', image_latents.shape)
+            image_latents = image_latents.reshape(-1, 2 * image_latents.shape[1], image_latents.shape[2], image_latents.shape[3])
+            # print('after reshape image_latents', image_latents.shape)
+            event_latents = torch.cat([event_latents, image_latents], dim=1)
+            # print('after concat event_latents', event_latents.shape)
+            # exit()
+        depth_latents = self.depth_effwnet(event_latents)
+        # print('depth_latents', depth_latents.shape)
+        depth = self.depth_pred(depth_latents)
+        # print('depth', depth.shape)
+        # exit()
+        return event_latents, depth
+        
+        
 class SSLDepthModel(nn.Module):
     def __init__(self, n_channels, out_depth, inc_f0=1, bilinear=False, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False, outer_conv=False, depthnet_hidden_layers=2):
         '''
@@ -167,12 +211,20 @@ class SSLDepthModel(nn.Module):
         loss = loss_fn(pred, corresponding_depth_ground_truth)
         '''
         super().__init__()
-        self.effwnet = DepthEffWNet(n_channels, out_depth, inc_f0, bilinear, n_lyr, ch1, c_is_const, c_is_scalar, outer_conv, depthnet_hidden_layers=depthnet_hidden_layers)
-    
+        self.effwnet = EventEffWNetEncoder(n_channels, out_depth, inc_f0, bilinear, n_lyr, ch1, c_is_const, c_is_scalar, outer_conv, depthnet_hidden_layers=depthnet_hidden_layers)
+        
+        n_chs = [ch1 * (2 ** power) for power in range(n_lyr+1)]
+        self.depth_pred = DepthPred(n_chs[0], out_depth, num_hidden_layers=depthnet_hidden_layers)
+        
     def freeze_encoder(self):
-        self.effwnet.freeze_encoder()
+        with torch.no_grad():
+            for param in self.effwnet.parameters():
+                param.requires_grad = False
         
     def forward(self, ssl_event_data):
-        pred = self.effwnet(ssl_event_data)
-        return pred
+        event_latents = self.effwnet(ssl_event_data)
+        assert event_latents.shape[0] % 2 == 0, "Batch size of event_latents should be even."
+        event_latents = event_latents.reshape(-1, 2 * event_latents.shape[1], event_latents.shape[2], event_latents.shape[3])
+        depth = self.depth_pred(event_latents)
+        return event_latents, depth
     
