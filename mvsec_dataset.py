@@ -123,7 +123,7 @@ class MVSECSampler(BatchSampler):
 
 class MVSECDataset(Dataset):
 
-    def __init__(self, data_dir: str, scenario: str, split: int, is_training: bool, event_transforms=None, image_transforms=None):
+    def __init__(self, data_dir: str, scenario: str, split: int, is_training: bool, event_transforms=None, image_transforms=None, get_depth: bool = False, depth_transforms=None):
         super().__init__()
         self.loc = ['left', 'right']
         self.data_dir = data_dir
@@ -131,6 +131,8 @@ class MVSECDataset(Dataset):
         self.is_training = is_training
         self.event_transforms = event_transforms
         self.image_transforms = image_transforms
+        self.depth_transforms = depth_transforms
+        self.get_depth = get_depth
         self.split = split
         assert split in [1, 2, 3]
         if split == 1:
@@ -147,6 +149,14 @@ class MVSECDataset(Dataset):
             self.len_of_events += len(self.event_data[self.loc[1]][self.training_splits[0]]) + len(self.event_data[self.loc[1]][self.training_splits[1]])
             self.len_of_images = len(self.image_paths[self.loc[0]][self.training_splits[0]]) + len(self.image_paths[self.loc[0]][self.training_splits[1]])
             self.len_of_images += len(self.image_paths[self.loc[1]][self.training_splits[0]]) + len(self.image_paths[self.loc[1]][self.training_splits[1]])
+            
+            if get_depth:
+                self.depth_data_paths = self.load_depth_data()
+                self.len_of_depths = len(self.depth_data_paths[self.training_splits[0]]) + len(self.depth_data_paths[self.training_splits[1]])
+                assert (2 * self.len_of_depths) == self.len_of_images, f"Mismatch between 2x depth {2 * self.len_of_depths}, and image data lengths {self.len_of_images}"
+            else:
+                self.depth_data_paths = None
+                self.len_of_depths = 0
         else:
             self.event_data = self.load_event_test_data()
             self.image_paths = self.load_image_test_paths()
@@ -154,10 +164,52 @@ class MVSECDataset(Dataset):
             self.len_of_events += len(self.event_data[self.loc[1]][self.split])
             self.len_of_images = len(self.image_paths[self.loc[0]][self.split])
             self.len_of_images += len(self.image_paths[self.loc[1]][self.split])
-
+            
+            if get_depth:
+                self.depth_data_paths = self.load_depth_test_data()
+                self.len_of_depths = len(self.depth_data_paths[self.split])
+                assert (2 * self.len_of_depths) == self.len_of_images, f"Mismatch between 2x depth {2 * self.len_of_depths}, and image data lengths {self.len_of_images}"
+            else:
+                self.depth_data_paths = None
+                self.len_of_depths = 0
+                
         assert self.len_of_events == self.len_of_images, f"Mismatch between event {self.len_of_events} and image data lengths {self.len_of_images}"
-        
-    def load_event_test_data(self) -> torch.Tensor:
+    
+    def load_depth_data(self):
+        depth_paths = {}
+        for exp in self.training_splits:
+            individual_depth_paths = []
+            first_index, last_index = SEQUENCES_FRAMES[self.scenario][f'split{self.split}'][self.scenario + str(exp)]
+            depth_path = os.path.join(self.data_dir, f'{self.scenario}/{self.scenario}{exp}/depth_gt/')
+            assert os.path.exists(depth_path), f'Depth directory does not exist: {depth_path}'
+            for idx, img in enumerate(os.listdir(depth_path)):
+                if idx < first_index or idx > last_index:
+                    continue
+                individual_depth_path = os.path.join(depth_path, img)
+                individual_depth_paths.append(individual_depth_path)
+                
+            depth_paths[exp] = individual_depth_paths
+        #     print(exp, len(individual_depth_paths), individual_depth_paths[0], individual_depth_paths[-1])
+        # exit()
+        return depth_paths
+    
+    def load_depth_test_data(self):
+        depth_paths = {}
+        exp = self.split
+        individual_depth_paths = []
+        first_index, last_index = SEQUENCES_FRAMES[self.scenario][f'split{self.split}'][self.scenario + str(exp)]
+        depth_path = os.path.join(self.data_dir, f'{self.scenario}/{self.scenario}{exp}/depth_gt/')
+        assert os.path.exists(depth_path), f'Depth directory does not exist: {depth_path}'
+        for idx, img in enumerate(os.listdir(depth_path)):
+            if idx < first_index or idx > last_index:
+                continue
+            individual_depth_path = os.path.join(depth_path, img)
+            individual_depth_paths.append(individual_depth_path)
+            
+        depth_paths[exp] = individual_depth_paths
+        return depth_paths
+    
+    def load_event_test_data(self):
         event_data = {}
         exp = self.split
         for loc in self.loc:
@@ -275,8 +327,20 @@ class MVSECDataset(Dataset):
             
             event_data[loc] = event_data_at_loc
             image_data[loc] = (image_at_t0, image_at_t1)
+        
+        depth_data = None
+        if self.get_depth:
+            depth_path = self.depth_data_paths[split][idx]
             
-        return (event_data, image_data)
+            depth_data = Image.open(depth_path)
+            if self.depth_transforms is not None:
+                depth_data = self.depth_transforms(depth_data)
+            # print('index', index)
+            # print('path to depth data image:', depth_path)
+            # print('depth_data shape:', depth_data.shape, depth_data.min(), depth_data.max())
+            # exit()
+            
+        return (event_data, image_data, depth_data)
     
     # def __getitem__(self, index):
     #     image_data = {}
