@@ -134,10 +134,10 @@ class DepthFromEventsModel(nn.Module):
             self.img_effwnet = EventEffWNetEncoder(1, out_depth, inc_f0, bilinear, n_lyr, ch1, 
                                                     c_is_const, c_is_scalar, outer_conv, 
                                                     depthnet_hidden_layers=depthnet_hidden_layers+1)
-            depth_effwnet_n_channels += 2 * n_chs[0]
+            # depth_effwnet_n_channels += 2 * n_chs[0]
             
             
-        self.depth_effwnet = EventEffWNetEncoder(depth_effwnet_n_channels, out_depth, inc_f0, bilinear, n_lyr + 1, ch1,
+        self.depth_effwnet = EventEffWNetEncoder(depth_effwnet_n_channels, out_depth, inc_f0, bilinear, n_lyr, ch1,
                                                  c_is_const, c_is_scalar, outer_conv,
                                                  depthnet_hidden_layers=depthnet_hidden_layers+1)
         
@@ -174,17 +174,17 @@ class DepthFromEventsModel(nn.Module):
         if self.use_images:
             image_latents = self.img_effwnet(image_input)
             assert image_latents.shape[0] % 2 == 0, "Batch size of image_latents should be even."
-            # print('image_latents', image_latents.shape)
+            
             image_latents = image_latents.reshape(-1, 2 * image_latents.shape[1], image_latents.shape[2], image_latents.shape[3])
-            # print('after reshape image_latents', image_latents.shape)
-            event_latents = torch.cat([event_latents, image_latents], dim=1)
-            # print('after concat event_latents', event_latents.shape)
-            # exit()
+            
+            # event_latents = torch.cat([event_latents, image_latents], dim=1)
+            event_latents = event_latents + image_latents
+            
+            
         depth_latents = self.depth_effwnet(event_latents)
-        # print('depth_latents', depth_latents.shape)
+        
         depth = self.depth_pred(depth_latents)
-        # print('depth', depth.shape)
-        # exit()
+
         return event_latents, depth
         
         

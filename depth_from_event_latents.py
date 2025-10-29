@@ -25,10 +25,13 @@ if __name__ == "__main__":
     parser.add_argument('--loss_type', default='l1', type=str)
     parser.add_argument('--resume_epoch', default=0, type=int)
     parser.add_argument('--save_freq', default=4, type=int)
-    parser.add_argument('--save_images', default=False, type=bool)
+    parser.add_argument('--save_images', default='False', type=str)
     parser.add_argument('--event_encoder_path', type=str)
-    parser.add_argument('--use_images', default=True, type=bool)
+    parser.add_argument('--use_images', default='True', type=str)
     args = parser.parse_args()
+    
+    args.use_images = args.use_images.lower() == 'true'
+    args.save_images = args.save_images.lower() == 'true'
     
     device = 'cuda'
     loss_type = args.loss_type
@@ -63,7 +66,7 @@ if __name__ == "__main__":
         f.write(f'Batch Size: {batch_size}\n')
         f.write(f'Epochs: {epochs}\n')
         f.write(f'Learning Rate: {learning_rate}\n')
-        f.write(f'Training with Images?: {use_images}n')
+        f.write(f'Training with Images?: {use_images}\n')
         f.write(f'Save Frequency: Every {save_freq} Epoch(s)\n')
         f.write(f'  |_ Save Images as well?: {save_images}\n')
         f.write('--'*20 + '\n\n')
@@ -96,7 +99,7 @@ if __name__ == "__main__":
     # Create online model
     # event_model = SSLEventModel(n_channels=3, out_depth=1, inc_f0=1, bilinear=True, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False)
     model = DepthFromEventsModel(use_images=use_images, n_channels=3, out_depth=1, inc_f0=1, bilinear=True, n_lyr=4, ch1=24, 
-                                 c_is_const=False, c_is_scalar=False, depthnet_hidden_layers=3)
+                                 c_is_const=False, c_is_scalar=False, depthnet_hidden_layers=2)
 
     event_encoder_dict = torch.load(event_encoder_path)
     model_state_dict = model.state_dict()
@@ -136,7 +139,8 @@ if __name__ == "__main__":
         
         total_epoch_loss = 0
         
-        for (event_data, image_data, depth_data) in tqdm(dataloader, total=len(dataloader), desc=f'Epoch {epoch}/{epochs}'):
+        for (event_data, image_data, depth_data, disp_data) in tqdm(dataloader, total=len(dataloader), desc=f'Epoch {epoch}/{epochs}'):
+            assert (disp_data == -1).all(), disp_data
             optimizer.zero_grad()
             
             depth_data = depth_data.to(device)
@@ -170,11 +174,23 @@ if __name__ == "__main__":
             
             if loss_type == 'mse':
                 loss = torch.square(depth_pred - depth_data)
+                # print((depth_pred - depth_data).abs().mean().item())
+                # print(loss.mean().item())
+                # exit()
             elif loss_type == 'l1':
                 loss = torch.abs(depth_pred - depth_data)
             elif loss_type == 'ph':
-                c = 0.00054 * math.sqrt(math.prod(depth_data.shape[1:]))
+                # c = 0.00054 * math.sqrt(math.prod(depth_data.shape[1:]))
+                # c = c / 1000
+                # print(c)
+                # exit()
+                # c = 1. / math.sqrt(math.prod(depth_data.shape[1:])) # 29th Oct
+                c = 0.001
                 loss: torch.Tensor = ((depth_pred - depth_data).square() + (c ** 2)).sqrt() - c
+                # print((depth_pred - depth_data).abs().mean().item())
+                # print((depth_pred - depth_data).square().mean().item())
+                # print(loss.mean().item())
+                # exit()
             
             loss = loss.mean()
             loss.backward()
