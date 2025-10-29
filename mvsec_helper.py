@@ -106,7 +106,9 @@ def depth2disparity(depth_image, focal_length_x_baseline):
     disparity_image = np.round(DISPARITY_MULTIPLIER * np.abs(focal_length_x_baseline) / (depth_image + 1e-15))
     invalid = np.isnan(disparity_image) | (disparity_image == float('inf')) | (disparity_image >= DISPARITY_MAXIMUM)
     disparity_image[invalid] = INVALID_DISPARITY
-    # output = (disparity_image * 256).astype(np.uint16)
-    output = disparity_image.astype(np.uint8)
+    # print(disparity_image.min(), disparity_image.max(), depth_image.min(), depth_image.max())
+    # exit()
+    output = (disparity_image * 256).astype(np.uint16)
+    # output = disparity_image.astype(np.uint8)
     return output
 

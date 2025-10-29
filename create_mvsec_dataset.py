@@ -10,6 +10,8 @@ import numpy as np
 
 from mvsec_helper import *
 
+save_depth_and_disp_only = False
+
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', default='/root/data/MVSEC', type=str)
@@ -98,9 +100,10 @@ if __name__=='__main__':
                 
                 # Save events as .npy
                 events_save_dir = save_dir + f'/events/{loc}'
-                if not os.path.exists(events_save_dir):
-                    os.makedirs(events_save_dir)
-                np.save(events_save_dir + f'/{file_name}', rectified_synchronized_events)
+                if not save_depth_and_disp_only:
+                    if not os.path.exists(events_save_dir):
+                        os.makedirs(events_save_dir)
+                    np.save(events_save_dir + f'/{file_name}', rectified_synchronized_events)
                 
                 # Get synchronized raw image
                 time_diff = np.finfo(np.float64).max
@@ -116,12 +119,14 @@ if __name__=='__main__':
                 
                 # Image rectification
                 rectified_synchronized_image = cv2.remap(synchronized_image, rectified_to_distorted_x, rectified_to_distorted_y, cv2.INTER_LINEAR)
+                # exit()
                 
                 # Save image as .png
                 image_save_dir = save_dir + f'/images/{loc}'
-                if not os.path.exists(image_save_dir):
-                    os.makedirs(image_save_dir)
-                cv2.imwrite(image_save_dir + f'/{file_name}.png', rectified_synchronized_image)
+                if not save_depth_and_disp_only:
+                    if not os.path.exists(image_save_dir):
+                        os.makedirs(image_save_dir)
+                    cv2.imwrite(image_save_dir + f'/{file_name}.png', rectified_synchronized_image)
                 
                 # Convert depth map to disparity map
                 depth_gt[synchronization_index][np.isnan(depth_gt[synchronization_index])] = 0.
@@ -129,8 +134,17 @@ if __name__=='__main__':
                 # Save depth map as .png
                 save_depth_gt_dir = save_dir + '/depth_gt'
                 min_depth_gt = np.min(depth_gt[synchronization_index])
+                assert min_depth_gt == 0, min_depth_gt
                 max_depth_gt = np.max(depth_gt[synchronization_index])
-                depth_gt_normalized = (255. * (depth_gt[synchronization_index] - min_depth_gt) / (max_depth_gt - min_depth_gt)).astype(np.uint8)
+                # print(min_depth_gt, max_depth_gt)
+                # continue
+                # exit()
+                depth_gt_normalized = 255. * (depth_gt[synchronization_index] - min_depth_gt) / (max_depth_gt - min_depth_gt)
+                # print(depth_gt_normalized.min(), depth_gt_normalized.max())
+                depth_gt_normalized = np.clip(depth_gt_normalized, 0, 255).astype(np.uint8)
+                # print(depth_gt_normalized.min(), depth_gt_normalized.max())
+                # exit()
+                
                 if not os.path.exists(save_depth_gt_dir):
                     os.makedirs(save_depth_gt_dir)
                 cv2.imwrite(save_depth_gt_dir + f'/{file_name}.png', depth_gt_normalized)
@@ -142,7 +156,7 @@ if __name__=='__main__':
                 if not os.path.exists(save_gt_dir):
                     os.makedirs(save_gt_dir)
                 cv2.imwrite(save_gt_dir + f'/{file_name}.png', disp_gt)
-                
+            # exit()
             assert len(os.listdir(events_save_dir)) == len(os.listdir(image_save_dir)) == len(os.listdir(save_gt_dir))
-        print(f'{args.scenario + str(exp)} finish')
+        print(f'{args.scenario + str(exp)} completed')
     print('Data saving as individual files completed')
