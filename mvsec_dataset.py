@@ -123,7 +123,7 @@ class MVSECSampler(BatchSampler):
 
 class MVSECDataset(Dataset):
 
-    def __init__(self, data_dir: str, scenario: str, split: int, is_training: bool, event_transforms=None, image_transforms=None, get_depth: bool = False, depth_transforms=None):
+    def __init__(self, data_dir: str, scenario: str, split: int, is_training: bool, event_transforms=None, image_transforms=None, get_depth: bool = False, depth_transforms=None, get_disparity: bool = False, disparity_transforms=None):
         super().__init__()
         self.loc = ['left', 'right']
         self.data_dir = data_dir
@@ -132,7 +132,17 @@ class MVSECDataset(Dataset):
         self.event_transforms = event_transforms
         self.image_transforms = image_transforms
         self.depth_transforms = depth_transforms
+        self.disparity_transforms = disparity_transforms
+        
         self.get_depth = get_depth
+        self.get_disparity = get_disparity
+        if get_depth:
+            assert not get_disparity, "Cannot get both depth and disparity data."
+            assert disparity_transforms is None
+        if get_disparity:
+            assert not get_depth, "Cannot get both depth and disparity data."
+            assert depth_transforms is None
+        
         self.split = split
         assert split in [1, 2, 3]
         if split == 1:
@@ -157,6 +167,14 @@ class MVSECDataset(Dataset):
             else:
                 self.depth_data_paths = None
                 self.len_of_depths = 0
+            
+            if get_disparity:
+                self.disparity_data_paths = self.load_disparity_data()
+                self.len_of_disparities = len(self.disparity_data_paths[self.training_splits[0]]) + len(self.disparity_data_paths[self.training_splits[1]])
+                assert (2 * self.len_of_disparities) == self.len_of_images, f"Mismatch between 2x disparity {2 * self.len_of_disparities}, and image data lengths {self.len_of_images}"
+            else:
+                self.disparity_data_paths = None
+                self.len_of_disparities = 0
         else:
             self.event_data = self.load_event_test_data()
             self.image_paths = self.load_image_test_paths()
@@ -172,7 +190,15 @@ class MVSECDataset(Dataset):
             else:
                 self.depth_data_paths = None
                 self.len_of_depths = 0
-                
+            
+            if get_disparity:
+                self.disparity_data_paths = self.load_disparity_test_data()
+                self.len_of_disparities = len(self.disparity_data_paths[self.split])
+                assert (2 * self.len_of_disparities) == self.len_of_images, f"Mismatch between 2x disparity {2 * self.len_of_disparities}, and image data lengths {self.len_of_images}"
+            else:
+                self.disparity_data_paths = None
+                self.len_of_disparities = 0
+
         assert self.len_of_events == self.len_of_images, f"Mismatch between event {self.len_of_events} and image data lengths {self.len_of_images}"
     
     def load_depth_data(self):
@@ -192,7 +218,23 @@ class MVSECDataset(Dataset):
         #     print(exp, len(individual_depth_paths), individual_depth_paths[0], individual_depth_paths[-1])
         # exit()
         return depth_paths
-    
+
+    def load_disparity_data(self):
+        disparity_paths = {}
+        for exp in self.training_splits:
+            individual_disparity_paths = []
+            first_index, last_index = SEQUENCES_FRAMES[self.scenario][f'split{self.split}'][self.scenario + str(exp)]
+            disparity_path = os.path.join(self.data_dir, f'{self.scenario}/{self.scenario}{exp}/disparity_gt/')
+            assert os.path.exists(disparity_path), f'Disparity directory does not exist: {disparity_path}'
+            for idx, img in enumerate(os.listdir(disparity_path)):
+                if idx < first_index or idx > last_index:
+                    continue
+                individual_disparity_path = os.path.join(disparity_path, img)
+                individual_disparity_paths.append(individual_disparity_path)
+
+            disparity_paths[exp] = individual_disparity_paths
+        return disparity_paths
+
     def load_depth_test_data(self):
         depth_paths = {}
         exp = self.split
@@ -310,6 +352,7 @@ class MVSECDataset(Dataset):
             # print('split and index', split, idx)
             # print('image path for t0:', loc_image_data_at_split[idx - 1])
             # exit()
+            # print(loc, loc_image_data_at_split[idx - 1])
             image_at_t0 = Image.open(loc_image_data_at_split[idx - 1])
             image_at_t1 = Image.open(loc_image_data_at_split[idx])
             # if loc == 'left':
@@ -321,27 +364,28 @@ class MVSECDataset(Dataset):
             if self.image_transforms:
                 image_at_t0 = self.image_transforms(image_at_t0)
                 image_at_t1 = self.image_transforms(image_at_t1)
-
-            # print('min, max of image_at_t0:', image_at_t0.min(), image_at_t0.max())
-            # exit()
             
             event_data[loc] = event_data_at_loc
             image_data[loc] = (image_at_t0, image_at_t1)
         
-        depth_data = None
+        depth_data = -1
         if self.get_depth:
             depth_path = self.depth_data_paths[split][idx]
             
             depth_data = Image.open(depth_path)
             if self.depth_transforms is not None:
                 depth_data = self.depth_transforms(depth_data)
-            # print('index', index)
-            # print('path to depth data image:', depth_path)
-            # print('depth_data shape:', depth_data.shape, depth_data.min(), depth_data.max())
-            # exit()
+
+        disparity_data = -1
+        if self.get_disparity:
+            disparity_path = self.disparity_data_paths[split][idx]
             
-        return (event_data, image_data, depth_data)
-    
+            disparity_data = Image.open(disparity_path)
+            if self.disparity_transforms is not None:
+                disparity_data = self.disparity_transforms(disparity_data)
+
+        return (event_data, image_data, depth_data, disparity_data)
+
     # def __getitem__(self, index):
     #     image_data = {}
     #     event_data = {}
