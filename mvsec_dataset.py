@@ -330,6 +330,7 @@ class MVSECDataset(Dataset):
     def __getitem__(self, index):
         image_data = {}
         event_data = {}
+        index_data = {}
         
         idx, split = index
         assert idx - 1 >= 0, f'Index must be at least 1 to get image pair, got {idx}'
@@ -362,11 +363,12 @@ class MVSECDataset(Dataset):
             # images_at_t1 = [ (Image.open(loc_image_data_at_split[pos][i]), i) for pos, i in enumerate(index) ]
 
             if self.image_transforms:
-                image_at_t0 = self.image_transforms(image_at_t0)
-                image_at_t1 = self.image_transforms(image_at_t1)
+                image_at_t0, image_at_t1 = self.image_transforms(image_at_t0, image_at_t1)
+                # image_at_t1 = self.image_transforms(image_at_t1)
             
             event_data[loc] = event_data_at_loc
             image_data[loc] = (image_at_t0, image_at_t1)
+            index_data[loc] = (idx - 1, idx)
         
         depth_data = -1
         if self.get_depth:
@@ -384,7 +386,7 @@ class MVSECDataset(Dataset):
             if self.disparity_transforms is not None:
                 disparity_data = self.disparity_transforms(disparity_data)
 
-        return (event_data, image_data, depth_data, disparity_data)
+        return (event_data, image_data, depth_data, disparity_data, index_data)
 
     # def __getitem__(self, index):
     #     image_data = {}

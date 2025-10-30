@@ -95,7 +95,7 @@ if __name__ == "__main__":
     sampler = MVSECSampler(sampler=_sampler, batch_size=batch_size, drop_last=False)
     # dataloader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=2, pin_memory=True, batch_sampler=sampler)
     # dataloader = DataLoader(dataset, num_workers=1, pin_memory=True, batch_sampler=sampler)
-    dataloader = DataLoader(dataset, num_workers=0, pin_memory=True, batch_sampler=sampler)
+    dataloader = DataLoader(dataset, num_workers=1, pin_memory=True, batch_sampler=sampler)
     
     # Create online model
     # event_model = SSLEventModel(n_channels=3, out_depth=1, inc_f0=1, bilinear=True, n_lyr=4, ch1=24, c_is_const=False, c_is_scalar=False)
@@ -140,9 +140,12 @@ if __name__ == "__main__":
         
         total_epoch_loss = 0
         
-        for (event_data, image_data, depth_data, disp_data) in tqdm(dataloader, total=len(dataloader), desc=f'Epoch {epoch}/{epochs}'):
+        for (event_data, image_data, depth_data, disp_data, index_data) in tqdm(dataloader, total=len(dataloader), desc=f'Epoch {epoch}/{epochs}'):
             optimizer.zero_grad()
             assert (depth_data == -1).all(), depth_data
+            
+            left_index, right_index = index_data['left'], index_data['right']
+            # assert (left_index[0] == right_index[0]).all() and (left_index[1] == right_index[1]).all(), f'Left and Right indices do not match: {left_index}, {right_index}'
             
             disp_data = disp_data.to(device)
             # Convert back to original disparity values since we saved as (disp*256).to(uint16) in the create_mvsec_dataset.py script
@@ -174,15 +177,18 @@ if __name__ == "__main__":
             mask = disp_data > 0  # Only compute loss where ground truth disparity is valid
             
             if loss_type == 'mse':
+                # loss = torch.square(disp_pred - disp_data)
                 loss = torch.square(disp_pred[mask] - disp_data[mask])
                 # print((depth_pred - depth_data).abs().mean().item())
                 # print(loss.mean().item())
                 # exit()
             elif loss_type == 'l1':
+                # loss = torch.abs(disp_pred - disp_data)
                 loss = torch.abs(disp_pred[mask] - disp_data[mask])
             elif loss_type == 'ph':
                 # c = 1. / math.sqrt(math.prod(depth_data.shape[1:])) # 29th Oct
                 c = 0.001
+                # loss: torch.Tensor = ((disp_pred - disp_data).square() + (c ** 2)).sqrt() - c
                 loss: torch.Tensor = ((disp_pred[mask] - disp_data[mask]).square() + (c ** 2)).sqrt() - c
                 # print((depth_pred - depth_data).abs().mean().item())
                 # print((depth_pred - depth_data).square().mean().item())
@@ -223,10 +229,13 @@ if __name__ == "__main__":
                 vutils.save_image(event_data_left_ch1.float(), f'{workdir}/images/E{epoch}_event_left_ch1.png', normalize=True)
                 vutils.save_image(event_data_left_ch2.float(), f'{workdir}/images/E{epoch}_event_left_ch2.png', normalize=True)
                 
-                _image_left = (t1_images[0:1, :, :, :] * 255).clamp(0, 255).to(torch.uint8).contiguous()
-                _image_right = (t1_images[1:2, :, :, :] * 255).clamp(0, 255).to(torch.uint8).contiguous()
+                _image_left = (image_at_t1_left[0:1, :, :, :] * 255).clamp(0, 255).to(torch.uint8).contiguous()
+                _image_right = (image_at_t1_right[0:1, :, :, :] * 255).clamp(0, 255).to(torch.uint8).contiguous()
+                
                 vutils.save_image(_image_left.float(), f'{workdir}/images/E{epoch}_img_left.png', normalize=True)
                 vutils.save_image(_image_right.float(), f'{workdir}/images/E{epoch}_img_right.png', normalize=True)
+                
+                # print("left t1 image's index:", left_index[1], "right t1 image's index:", right_index[1])
                 
                 _disp_pred = (disp_pred[0:1, :, :, :] * 255).clamp(0, 255).to(torch.uint8).contiguous()
                 _disp_gt = (disp_data[0:1, :, :, :] * 255).clamp(0, 255).to(torch.uint8).contiguous()
