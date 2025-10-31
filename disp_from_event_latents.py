@@ -127,7 +127,8 @@ if __name__ == "__main__":
     model.compile()
     
     optimizer = torch.optim.RAdam(model.parameters(), lr=learning_rate)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=1)
     
     if resume_epoch > 0:
         print(f'Loading model, opt, and scheduler from epoch {resume_epoch}...')
