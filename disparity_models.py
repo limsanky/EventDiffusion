@@ -96,7 +96,7 @@ class EventEffWNetEncoder(nn.Module):
 
     def forward(self, x):
         x0 = x
-        
+        # print('input', x.shape)
         # print('x0', x0.shape)
         x1 = self.inc(x0)
         # print('x1', x1.shape)
@@ -115,7 +115,8 @@ class EventEffWNetEncoder(nn.Module):
             # print("x_ie", x_ie.shape)
             # print("xr", xr.shape)
             x_ie = up(x_ie, xr)
-            # print(x_ie.shape)
+            print(x_ie.shape)
+        # print('ok', x_ie.shape)
         # exit()
         return x_ie
 
