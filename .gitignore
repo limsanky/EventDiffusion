@@ -3,3 +3,6 @@ __pycache__/*
 tests/*
 pretrained_models/*
 smnet_model/*
+MSR*/
+MSR*.py
+event_diff_data.tar.gz
