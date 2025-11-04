@@ -42,7 +42,14 @@ ENCODER_PATH='/root/code/EventDiffusion/pretrained_models/l1_loss/model_epoch_30
 #  --bs $BATCH_SIZE --save_freq $SAVE_FREQ --save_images $SAVE_IMAGES --lr $LR --epochs $EPOCHS \
 #  --event_encoder_path $ENCODER_PATH --use_images $USE_IMAGES
 
-DATE=1031_new_disp_encoder_l1_mse
+# DATE=1031_new_disp_encoder_l1_mse
+# LR=2e-4
+
+# CUDA_VISIBLE_DEVICES=$DEVICES python disp_from_event_latents.py --date $DATE --loss_type mse \
+#  --bs $BATCH_SIZE --save_freq $SAVE_FREQ --save_images $SAVE_IMAGES --lr $LR --epochs $EPOCHS \
+#  --event_encoder_path $ENCODER_PATH --use_images $USE_IMAGES
+
+DATE=test
 LR=2e-4
 
 CUDA_VISIBLE_DEVICES=$DEVICES python disp_from_event_latents.py --date $DATE --loss_type mse \
