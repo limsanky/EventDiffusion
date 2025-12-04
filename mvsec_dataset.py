@@ -7,8 +7,9 @@ from PIL import Image
 from mvsec_helper import SEQUENCES_FRAMES
 
 class SingleMVSECSampler(Sampler):
-    def __init__(self, scenario: str, split: int, is_training: bool):
+    def __init__(self, scenario: str, split: int, is_training: bool, shuffle: bool = True):
         self.scenario = scenario
+        self.shuffle = shuffle
         self.split = split
         assert split in [1, 2, 3]
         if split == 1:
@@ -49,7 +50,8 @@ class SingleMVSECSampler(Sampler):
         #     yield [ first, second ]
         
         return_indices = []
-        all_indices = np.random.randint(1, self.__len__() + 1, size=(self.__len__(),))
+        # all_indices = np.random.randint(1, self.__len__() + 1, size=(self.__len__(),))
+        all_indices = [ i for i in range(1, self.__len__() + 1) ]
         # all_indices = [ i for i in range(1, self.__len__() + 1) ]
         # all_indices.reverse()
         # all_indices = np.random.randint(1415, 1425, size=(10,))
@@ -79,10 +81,14 @@ class SingleMVSECSampler(Sampler):
         
         assert len(return_indices) == self.__len__(), f'Length mismatch: {len(return_indices)} vs {self.__len__()}'
 
+        # Randomize the order of indices:
+        if self.shuffle:
+            random.shuffle(return_indices)
+            
+        # Yield the indices:
         for idx, exp in return_indices:
             yield (idx, exp)
         
-    
     def __len__(self):
         output = sum(self.count.values())
         return output
@@ -234,6 +240,22 @@ class MVSECDataset(Dataset):
 
             disparity_paths[exp] = individual_disparity_paths
         return disparity_paths
+    
+    def load_disparity_test_data(self):
+        disparity_paths = {}
+        exp = self.split
+        individual_disparity_paths = []
+        first_index, last_index = SEQUENCES_FRAMES[self.scenario][f'split{self.split}'][self.scenario + str(exp)]
+        disparity_path = os.path.join(self.data_dir, f'{self.scenario}/{self.scenario}{exp}/disparity_gt/')
+        assert os.path.exists(disparity_path), f'Disparity directory does not exist: {disparity_path}'
+        for idx, img in enumerate(os.listdir(disparity_path)):
+            if idx < first_index or idx > last_index:
+                continue
+            individual_disparity_path = os.path.join(disparity_path, img)
+            individual_disparity_paths.append(individual_disparity_path)
+
+        disparity_paths[exp] = individual_disparity_paths
+        return disparity_paths
 
     def load_depth_test_data(self):
         depth_paths = {}
@@ -325,7 +347,8 @@ class MVSECDataset(Dataset):
         return image_paths
     
     def __len__(self):
-        return len(self.event_data) - 1
+        # return len(self.event_data) - 1
+        return self.len_of_events * 2
     
     def __getitem__(self, index):
         image_data = {}
@@ -370,23 +393,29 @@ class MVSECDataset(Dataset):
             image_data[loc] = (image_at_t0, image_at_t1)
             index_data[loc] = (idx - 1, idx)
         
-        depth_data = -1
+        depth_data, prev_depth_data = -1, -1
         if self.get_depth:
             depth_path = self.depth_data_paths[split][idx]
+            prev_depth_path = self.depth_data_paths[split][idx - 1]
             
             depth_data = Image.open(depth_path)
+            prev_depth_data = Image.open(prev_depth_path)
             if self.depth_transforms is not None:
                 depth_data = self.depth_transforms(depth_data)
-
-        disparity_data = -1
+                prev_depth_data = self.depth_transforms(prev_depth_data)
+                
+        disparity_data, prev_disparity_data = -1, -1
         if self.get_disparity:
             disparity_path = self.disparity_data_paths[split][idx]
+            prev_disparity_path = self.disparity_data_paths[split][idx - 1]
             
             disparity_data = Image.open(disparity_path)
+            prev_disparity_data = Image.open(prev_disparity_path)
             if self.disparity_transforms is not None:
                 disparity_data = self.disparity_transforms(disparity_data)
-
-        return (event_data, image_data, depth_data, disparity_data, index_data)
+                prev_disparity_data = self.disparity_transforms(prev_disparity_data)
+                
+        return (event_data, image_data, depth_data, prev_depth_data, disparity_data, prev_disparity_data, index_data)
 
     # def __getitem__(self, index):
     #     image_data = {}
