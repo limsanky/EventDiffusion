@@ -9,3 +9,4 @@ event_diff_data.tar.gz
 wandb/
 diffusion/__pycache__/*
 workdir/
+utils/
