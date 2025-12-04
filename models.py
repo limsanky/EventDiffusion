@@ -513,7 +513,7 @@ class SSLEventModel(nn.Module):
     def forward(self, event_data, f0):
         clean_ie, c, ce = self.effwnet(event_data)
         f1_pred = self.ce_to_f1(ce, f0)
-        return f1_pred
+        return (clean_ie, c, ce), f1_pred
         
 
 class OutCls_conv(nn.Module):

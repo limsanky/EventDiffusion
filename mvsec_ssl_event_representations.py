@@ -3,7 +3,7 @@ from models import EffWNet, SSLEventModel
 import torch
 import argparse
 from mvsec_helper import *
-from torchsummary import summary
+from torchinfo import summary
 from torch.utils.data import DataLoader
 import torchvision.transforms.v2 as transforms
 from mvsec_dataset import MVSECDataset, MVSECSampler, SingleMVSECSampler
@@ -127,7 +127,7 @@ if __name__ == "__main__":
             # print('t1_images:', t1_images.min(), t1_images.max(), t1_images.shape)
             # exit()
 
-            output = model(events, t0_images)
+            output = model(events, t0_images)[1]
             
             if loss_type == 'mse':
                 loss = torch.square(output - t1_images)
